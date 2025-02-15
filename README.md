@@ -1,33 +1,16 @@
-# velero-plugin-suspend-cronjobs
+# Velero Plugin for Replica Updates
 
-Automatically suspend Kubernetes CronJobs prior to restoring them into a cluster.
+A Velero plugin that allows you to specify the desired number of replicas for Deployments and StatefulSets when they are restored from backup.
 
-## Building the plugin
+## Overview
 
-To build the plugin, run
+When restoring applications using Velero, you might want to specify a different number of replicas than what was backed up. This plugin enables you to set the desired replica count by adding an annotation to your resources before backup.
 
-```bash
-$ make
-```
-
-To build the Docker image, run
-
-```bash
-$ make container
-```
-
-This builds an image tagged as `github.com/tuusberg/velero-plugin-suspend-cronjobs:latest`. If you want to specify a different name or version/tag, run:
-
-```bash
-$ IMAGE=your-repo/your-name VERSION=your-version-tag make container 
-```
-
-To push the image to a Docker repository, run
-```bash
-$ make push
-```
 
 ## Deploying the plugin
+
+The plugin is available as a container image from GitHub Container Registry:
+ghcr.io/eth-eks/velero-plugin-update-replicas:latest
 
 To deploy your plugin image to a Velero server:
 
@@ -42,10 +25,48 @@ To deploy your plugin image to a Velero server:
     ```yaml
     velero:
       initContainers:
-        - name: velero-plugin-suspend-cronjobs
-              image: tuusberg/velero-plugin-suspend-cronjobs:latest
+        - name: velero-plugin-update-replicas
+              image: ghcr.io/eth-eks/velero-plugin-update-replicas:latest
               imagePullPolicy: Always
               volumeMounts:
                 - name: plugins
                   mountPath: /target
     ```
+
+## Usage
+
+3. When restoring, the plugin will automatically set the replica count according to the annotation:
+
+```bash
+velero restore create --from-backup my-backup
+```
+
+## Supported Resources
+
+- Deployments
+- StatefulSets
+
+## How It Works
+
+The plugin:
+1. Intercepts resources during restore
+2. Checks for the `eth-eks.velero/replicas-value-after-recovery` annotation
+3. If present, updates the replica count to the specified value
+4. If absent or invalid, maintains the original replica count
+
+## Development
+
+### Prerequisites
+
+- Go 1.23 or later
+- Docker
+
+### Running Tests
+
+```bash
+go test -v ./...
+```
+
+## License
+
+Apache License 2.0 - See [LICENSE](LICENSE) for details.
