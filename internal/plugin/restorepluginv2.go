@@ -139,6 +139,10 @@ func (p *RestorePluginV2) createOutput(resource interface{}) (*velero.RestoreIte
 	return velero.NewRestoreItemActionExecuteOutput(&unstructured.Unstructured{Object: inputMap}), nil
 }
 
+func (p *RestorePluginV2) Progress(_ string, _ *v1.Restore) (velero.OperationProgress, error) {
+	return velero.OperationProgress{Completed: true}, nil
+}
+
 func (p *RestorePluginV2) Cancel(operationID string, restore *v1.Restore) error {
 	return nil
 }
