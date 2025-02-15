@@ -1,9 +1,7 @@
 _output
-velero-plugin-example
+inject-metadata-velero-plugin
 
 .go
 
 _tiltbuild
-
-# JetBrains IDE metadata
-.idea
+.history/
