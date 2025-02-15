@@ -12,17 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM --platform=linux/amd64 golang:1.21-bookworm AS build
+FROM --platform=linux/amd64 golang:1.22-bookworm AS build
 ENV GOPROXY=https://proxy.golang.org
-WORKDIR /go/src/github.com/tuusberg/velero-plugin-suspend-cronjobs
+WORKDIR /go/src/github.com/eth-eks/velero-plugin-restore-replicas
 COPY . .
-RUN CGO_ENABLED=0 go build -o /go/bin/velero-plugin-suspend-cronjobs .
+RUN CGO_ENABLED=0 go build -o /go/bin/velero-plugin-restore-replicas .
 
 FROM --platform=linux/amd64 busybox:1.33.1 AS busybox
 
 FROM --platform=linux/amd64 scratch
-COPY --from=build /go/bin/velero-plugin-suspend-cronjobs /plugins/
+COPY --from=build /go/bin/velero-plugin-restore-replicas /plugins/
 COPY --from=busybox /bin/cp /bin/cp
 USER 65532:65532
-ENTRYPOINT ["/bin/cp", "/plugins/velero-plugin-suspend-cronjobs", "/target/"]
-
+ENTRYPOINT ["/bin/cp", "/plugins/velero-plugin-restore-replicas", "/target/"]

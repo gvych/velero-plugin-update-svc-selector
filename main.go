@@ -17,7 +17,7 @@ limitations under the License.
 package main
 
 import (
-	"github.com/cloudbees/inject-metadata-velero-plugin/internal/plugin"
+	"github.com/eth-eks/velero-plugin-update-replicas/internal/plugin"
 	"github.com/sirupsen/logrus"
 	"github.com/vmware-tanzu/velero/pkg/plugin/framework"
 )
