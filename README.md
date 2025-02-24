@@ -1,11 +1,10 @@
-# Velero Plugin for Replica Updates
+# Velero Plugin for Service Selector Updates
 
-A Velero plugin that allows you to specify the desired number of replicas for Deployments and StatefulSets when they are restored from backup.
+A Velero plugin that allows you to update service selectors when restoring from backup.
 
 ## Overview
 
-When restoring applications using Velero, you might want to specify a different number of replicas than what was backed up. This plugin enables you to set the desired replica count by adding an annotation to your resources before backup.
-
+When restoring applications using Velero, you might want to update service selectors to match new deployment names or labels. This plugin enables you to modify service selectors during restore.
 
 ## Deploying the plugin
 

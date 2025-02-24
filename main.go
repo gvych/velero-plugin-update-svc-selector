@@ -17,17 +17,17 @@ limitations under the License.
 package main
 
 import (
-	"github.com/eth-eks/velero-plugin-update-replicas/internal/plugin"
+	"github.com/eth-eks/velero-plugin-update-svc-selector/internal/plugin"
 	"github.com/sirupsen/logrus"
 	"github.com/vmware-tanzu/velero/pkg/plugin/framework"
 )
 
 func main() {
 	framework.NewServer().
-		RegisterRestoreItemActionV2("eth-eks/update-replicas", newRestorePluginV2).
+		RegisterRestoreItemActionV2("eth-eks/update-svc-selector", newUpdateSvcSelectorPluginV2).
 		Serve()
 }
 
-func newRestorePluginV2(logger logrus.FieldLogger) (interface{}, error) {
-	return plugin.NewRestorePluginV2(logger), nil
+func newUpdateSvcSelectorPluginV2(logger logrus.FieldLogger) (interface{}, error) {
+	return plugin.NewUpdateSvcSelectorPluginV2(logger), nil
 }

@@ -6,20 +6,19 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/vmware-tanzu/velero/pkg/plugin/velero"
-	appsv1 "k8s.io/api/apps/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-func TestRestorePluginV2_AppliesTo(t *testing.T) {
-	t.Run("Only applies to Deployments and StatefulSets", func(t *testing.T) {
-		plugin := &RestorePluginV2{
+func TestUpdateSvcSelectorPluginV2_AppliesTo(t *testing.T) {
+	t.Run("Only applies to Services", func(t *testing.T) {
+		plugin := &UpdateSvcSelectorPluginV2{
 			log: logrus.New(),
 		}
 
 		want := velero.ResourceSelector{
-			IncludedResources: []string{"statefulsets", "deployments"},
+			IncludedResources: []string{"services"},
 		}
 		got, err := plugin.AppliesTo()
 		if err != nil {
@@ -32,119 +31,83 @@ func TestRestorePluginV2_AppliesTo(t *testing.T) {
 	})
 }
 
-func TestRestorePluginV2_Execute(t *testing.T) {
-	t.Run("Updates Deployment Replicas", func(t *testing.T) {
-		deployment := appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-deployment",
-				Namespace: "test-namespace",
-				Annotations: map[string]string{
-					"eth-eks.velero/replicas-value-after-recovery": "3",
+func TestUpdateSvcSelectorPluginV2_Execute(t *testing.T) {
+
+	t.Run("Updates Service Selector", func(t *testing.T) {
+		// Create the unstructured object with the annotation as a JSON string
+		unstructuredObj := &unstructured.Unstructured{
+			Object: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       "Service",
+				"metadata": map[string]interface{}{
+					"name":      "test-service",
+					"namespace": "test-namespace",
+					"annotations": map[string]interface{}{
+						"eth-eks.velero/update-svc-selector": `{"app":"new-app","tier":"frontend"}`,
+					},
+				},
+				"spec": map[string]interface{}{
+					"selector": map[string]interface{}{
+						"app":  "old-app",
+						"tier": "backend",
+					},
 				},
 			},
-			Spec: appsv1.DeploymentSpec{
-				Replicas: int32Ptr(1),
-			},
 		}
-
-		deploymentUnstructured, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&deployment)
-		if err != nil {
-			t.Errorf("Error converting Deployment to unstructured: %v", err)
-		}
-
-		// Add kind information
-		deploymentUnstructured["kind"] = "Deployment"
 
 		input := &velero.RestoreItemActionExecuteInput{
-			Item: &unstructured.Unstructured{
-				Object: deploymentUnstructured,
-			},
+			Item: unstructuredObj,
 		}
 
-		plugin := &RestorePluginV2{
+		plugin := &UpdateSvcSelectorPluginV2{
 			log: logrus.New(),
 		}
 
 		output, err := plugin.Execute(input)
 		if err != nil {
 			t.Errorf("Error executing plugin: %v", err)
+			return
 		}
 
-		got := output.UpdatedItem.UnstructuredContent()["spec"].(map[string]interface{})["replicas"]
-		want := int64(3)
-		if got != want {
-			t.Errorf("Execute() got = %v, want %v", got, want)
-		}
-	})
-
-	t.Run("Updates StatefulSet Replicas", func(t *testing.T) {
-		statefulSet := appsv1.StatefulSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-statefulset",
-				Namespace: "test-namespace",
-				Annotations: map[string]string{
-					"eth-eks.velero/replicas-value-after-recovery": "5",
-				},
-			},
-			Spec: appsv1.StatefulSetSpec{
-				Replicas: int32Ptr(2),
-			},
+		if output == nil || output.UpdatedItem == nil {
+			t.Error("Expected non-nil output and UpdatedItem")
+			return
 		}
 
-		statefulSetUnstructured, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&statefulSet)
-		if err != nil {
-			t.Errorf("Error converting StatefulSet to unstructured: %v", err)
+		var updatedService corev1.Service
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(output.UpdatedItem.UnstructuredContent(), &updatedService); err != nil {
+			t.Errorf("Error converting output to Service: %v", err)
 		}
 
-		statefulSetUnstructured["kind"] = "StatefulSet"
-
-		input := &velero.RestoreItemActionExecuteInput{
-			Item: &unstructured.Unstructured{
-				Object: statefulSetUnstructured,
-			},
+		wantSelector := map[string]string{
+			"app":  "new-app",
+			"tier": "frontend",
 		}
-
-		plugin := &RestorePluginV2{
-			log: logrus.New(),
-		}
-
-		output, err := plugin.Execute(input)
-		if err != nil {
-			t.Errorf("Error executing plugin: %v", err)
-		}
-
-		got := output.UpdatedItem.UnstructuredContent()["spec"].(map[string]interface{})["replicas"]
-		want := int64(5)
-		if got != want {
-			t.Errorf("Execute() got = %v, want %v", got, want)
+		if !reflect.DeepEqual(updatedService.Spec.Selector, wantSelector) {
+			t.Errorf("Execute() got selector = %v, want %v", updatedService.Spec.Selector, wantSelector)
 		}
 	})
 
 	t.Run("No changes when annotation is missing", func(t *testing.T) {
-		deployment := appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-deployment",
-				Namespace: "test-namespace",
+		unstructuredObj := &unstructured.Unstructured{}
+		unstructuredObj.Object = map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"name":      "test-service",
+				"namespace": "test-namespace",
 			},
-			Spec: appsv1.DeploymentSpec{
-				Replicas: int32Ptr(2),
+			"spec": map[string]interface{}{
+				"selector": map[string]interface{}{
+					"app":  "original-app",
+					"tier": "original-tier",
+				},
 			},
 		}
-
-		deploymentUnstructured, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&deployment)
-		if err != nil {
-			t.Errorf("Error converting Deployment to unstructured: %v", err)
-		}
-
-		deploymentUnstructured["kind"] = "Deployment"
 
 		input := &velero.RestoreItemActionExecuteInput{
-			Item: &unstructured.Unstructured{
-				Object: deploymentUnstructured,
-			},
+			Item: unstructuredObj,
 		}
 
-		plugin := &RestorePluginV2{
+		plugin := &UpdateSvcSelectorPluginV2{
 			log: logrus.New(),
 		}
 
@@ -153,55 +116,144 @@ func TestRestorePluginV2_Execute(t *testing.T) {
 			t.Errorf("Error executing plugin: %v", err)
 		}
 
-		got := output.UpdatedItem.UnstructuredContent()["spec"].(map[string]interface{})["replicas"]
-		want := int64(2)
-		if got != want {
-			t.Errorf("Execute() got = %v, want %v", got, want)
+		var updatedService corev1.Service
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(output.UpdatedItem.UnstructuredContent(), &updatedService); err != nil {
+			t.Errorf("Error converting output to Service: %v", err)
+		}
+
+		wantSelector := map[string]string{
+			"app":  "original-app",
+			"tier": "original-tier",
+		}
+		if !reflect.DeepEqual(updatedService.Spec.Selector, wantSelector) {
+			t.Errorf("Execute() got selector = %v, want %v", updatedService.Spec.Selector, wantSelector)
 		}
 	})
 
 	t.Run("Returns error when annotation value is invalid", func(t *testing.T) {
-		deployment := appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-deployment",
-				Namespace: "test-namespace",
-				Annotations: map[string]string{
-					"eth-eks.velero/replicas-value-after-recovery": "invalid",
+		unstructuredObj := &unstructured.Unstructured{}
+		unstructuredObj.Object = map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"name":      "test-service",
+				"namespace": "test-namespace",
+				"annotations": map[string]interface{}{
+					"eth-eks.velero/update-svc-selector": "invalid-value",
 				},
 			},
-			Spec: appsv1.DeploymentSpec{
-				Replicas: int32Ptr(2),
+			"spec": map[string]interface{}{
+				"selector": map[string]interface{}{
+					"app": "original-app",
+				},
 			},
 		}
-
-		deploymentUnstructured, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&deployment)
-		if err != nil {
-			t.Errorf("Error converting Deployment to unstructured: %v", err)
-		}
-
-		deploymentUnstructured["kind"] = "Deployment"
 
 		input := &velero.RestoreItemActionExecuteInput{
-			Item: &unstructured.Unstructured{
-				Object: deploymentUnstructured,
-			},
+			Item: unstructuredObj,
 		}
 
-		plugin := &RestorePluginV2{
+		plugin := &UpdateSvcSelectorPluginV2{
 			log: logrus.New(),
 		}
 
-		_, err = plugin.Execute(input)
+		_, err := plugin.Execute(input)
 		if err == nil {
-			t.Error("Expected error when parsing invalid replicas value, got nil")
-		}
-		expectedError := "failed to parse replicas value: strconv.ParseInt: parsing \"invalid\": invalid syntax"
-		if err.Error() != expectedError {
-			t.Errorf("Expected error message %q, got %q", expectedError, err.Error())
+			t.Error("Expected error when parsing invalid selector value, got nil")
 		}
 	})
 }
 
-func int32Ptr(i int32) *int32 {
-	return &i
+func TestUpdateSvcSelectorPluginV2_getServiceSelectorFromAnnotation(t *testing.T) {
+	plugin := &UpdateSvcSelectorPluginV2{
+		log: logrus.New(),
+	}
+
+	tests := []struct {
+		name    string
+		item    *unstructured.Unstructured
+		want    map[string]string
+		wantErr bool
+	}{
+		{
+			name: "valid annotation",
+			item: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"annotations": map[string]interface{}{
+							"eth-eks.velero/update-svc-selector": `{"app":"new-app","env":"prod"}`,
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"app": "new-app",
+				"env": "prod",
+			},
+			wantErr: false,
+		},
+		{
+			name: "no annotations",
+			item: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"metadata": map[string]interface{}{},
+				},
+			},
+			want:    nil,
+			wantErr: false,
+		},
+		{
+			name: "annotation not present",
+			item: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"annotations": map[string]interface{}{
+							"other-annotation": "value",
+						},
+					},
+				},
+			},
+			want:    nil,
+			wantErr: false,
+		},
+		{
+			name: "invalid selector type",
+			item: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"annotations": map[string]interface{}{
+							"eth-eks.velero/update-svc-selector": "invalid-value",
+						},
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "invalid selector value type",
+			item: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"annotations": map[string]interface{}{
+							"eth-eks.velero/update-svc-selector": `{"app": 123}`, // number instead of string
+						},
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := plugin.getServiceSelectorFromAnnotation(tt.item)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getServiceSelectorFromAnnotation() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("getServiceSelectorFromAnnotation() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

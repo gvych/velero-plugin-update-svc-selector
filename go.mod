@@ -1,4 +1,4 @@
-module github.com/eth-eks/velero-plugin-update-replicas
+module github.com/eth-eks/velero-plugin-update-svc-selector
 
 go 1.22.0
 
